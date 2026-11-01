@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#1a0a14">
+<title>Я хочу вкусно — и точка</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: grid; place-items: center;
+    background: radial-gradient(circle at 50% 0%, #3a1030, #0d0409 70%);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    color: #fff; overflow: hidden; user-select: none;
+  }
+
+  .wrap {
+    position: relative;
+    width: min(100vw, 520px);
+    height: 100dvh;
+    max-height: 940px;
+    overflow: hidden;
+    background: linear-gradient(180deg, #2b1030 0%, #4a1226 55%, #6b1a1a 100%);
+    box-shadow: 0 0 90px rgba(255, 90, 40, .25), inset 0 0 140px rgba(0,0,0,.55);
+    touch-action: none;
+  }
+
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* ---------- HUD ---------- */
+  .hud {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 14px 18px; pointer-events: none; z-index: 4;
+    text-shadow: 0 2px 8px rgba(0,0,0,.7);
+  }
+  .label { font-size: 11px; letter-spacing: 2px; font-weight: 700; opacity: .6; }
+  .value { font-size: 30px; font-weight: 900; line-height: 1; color: #ffb36b; }
+  .right { text-align: right; }
+  .lives { font-size: 18px; letter-spacing: 2px; height: 22px; }
+  .dots { font-size: 14px; font-weight: 800; color: #ffd166; margin-top: 4px; opacity: .9; }
+
+  /* ---------- Оверлеи ---------- */
+  .overlay {
+    position: absolute; inset: 0; z-index: 5;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; padding: 28px; text-align: center;
+    background: radial-gradient(circle at 50% 40%, rgba(90,20,40,.86), rgba(8,3,8,.96));
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    transition: opacity .3s ease, visibility .3s ease;
+  }
+  .overlay.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+
+  .badge { font-size: 30px; letter-spacing: 4px; filter: drop-shadow(0 6px 14px rgba(0,0,0,.6)); }
+
+  .title {
+    margin: 0; font-size: clamp(30px, 9vw, 46px); font-weight: 900;
+    line-height: 1.02; letter-spacing: .5px; text-transform: uppercase;
+    text-shadow: 0 6px 24px rgba(255,80,40,.35);
+  }
+  .title.small { font-size: clamp(22px, 7vw, 32px); }
+  .bigdot { color: #ff5a2b; }
+
+  .sub {
+    margin: 0; max-width: 330px; font-size: 14.5px; line-height: 1.5;
+    opacity: .82;
+  }
+  .sub b { color: #ffd166; }
+
+  .btn {
+    margin-top: 6px; border: none; cursor: pointer;
+    font-family: inherit; font-weight: 900; font-size: 19px; letter-spacing: 1.5px;
+    padding: 16px 44px; border-radius: 999px; color: #fff;
+    background: linear-gradient(180deg, #ff7a3d, #e0241a);
+    box-shadow: 0 8px 0 #8f0f0c, 0 14px 34px rgba(255,80,40,.45);
+    transition: transform .08s ease, box-shadow .08s ease, filter .2s;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:active { transform: translateY(5px); box-shadow: 0 3px 0 #8f0f0c, 0 6px 18px rgba(255,80,40,.4); }
+
+  .hint { font-size: 12px; letter-spacing: 1.5px; opacity: .45; font-weight: 700; }
+
+  .result { display: flex; gap: 34px; margin: 4px 0 8px; }
+  .result > div { display: flex; flex-direction: column; gap: 4px; }
+  .result .value { font-size: 34px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <canvas id="game"></canvas>
+
+  <div class="hud">
+    <div>
+      <div class="label">СЧЁТ</div>
+      <div class="value" id="score">0</div>
+    </div>
+    <div class="right">
+      <div class="lives" id="lives">❤️❤️❤️</div>
+      <div class="dots" id="dots">⚫ 0</div>
+    </div>
+  </div>
+
+  <div class="overlay" id="startScreen">
+    <div class="badge">🍔 🍟 🌭</div>
+    <h1 class="title">Я хочу<br>вкусно<span class="bigdot">.</span></h1>
+    <p class="sub">Ловите вкусности тарелкой, не роняйте их и собирайте <b>точки</b>. Брокколи — не вкусно!</p>
+    <button class="btn" id="playBtn">ИГРАТЬ</button>
+    <div class="hint">МЫШЬ · ПАЛЕЦ · ← →</div>
+  </div>
+
+  <div class="overlay hidden" id="overScreen">
+    <h2 class="title small">Игра окончена<span class="bigdot">.</span></h2>
+    <p class="sub">И точка.</p>
+    <div class="result">
+      <div><span class="label">СЧЁТ</span><span class="value" id="finalScore">0</span></div>
+      <div><span class="label">РЕКОРД</span><span class="value" id="bestScore">0</span></div>
+    </div>
+    <button class="btn" id="againBtn">ЕЩЁ РАЗ</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ============ Инициализация ============ */
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  const scoreEl      = document.getElementById('score');
+  const livesEl      = document.getElementById('lives');
+  const dotsEl       = document.getElementById('dots');
+  const startScreen  = document.getElementById('startScreen');
+  const overScreen   = document.getElementById('overScreen');
+  const finalScoreEl = document.getElementById('finalScore');
+  const bestScoreEl  = document.getElementById('bestScore');
+
+  const EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+
+  let W = 0, H = 0;
+  const tray = { x: 0, y: 0, w: 120, h: 28, targetX: 0 };
+
+  const game = {
+    state: 'start',           // start | play | over
+    score: 0, lives: 3, combo: 0, dots: 0,
+    items: [], particles: [], texts: [],
+    time: 0, spawnTimer: 1.0, sinceDot: 0,
+    shake: 0, flash: 0, flashColor: '255,80,60',
+    best: Number(localStorage.getItem('vkusno_best') || 0)
+  };
+
+  const FOODS = [
+    { e: '🍔', p: 10 }, { e: '🍟', p: 8 }, { e: '🌭', p: 8 },
+    { e: '🍗', p: 12 }, { e: '🥤', p: 6 }, { e: '🍩', p: 7 },
+    { e: '🍕', p: 9 },  { e: '🌮', p: 9 }, { e: '🍦', p: 6 }
+  ];
+
+  const rand  = (a, b) => a + Math.random() * (b - a);
+  const pick  = arr => arr[(Math.random() * arr.length) | 0];
+  const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+
+  /* ============ Звук ============ */
+  let actx = null;
+  function beep(freq, dur, type, vol) {
+    try {
+      if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === 'suspended') actx.resume();
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = type || 'sine';
+      o.frequency.setValueAtTime(freq, actx.currentTime);
+      g.gain.setValueAtTime(vol || 0.06, actx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
+      o.connect(g); g.connect(actx.destination);
+      o.start(); o.stop(actx.currentTime + dur);
+    } catch (e) { /* без звука тоже хорошо */ }
+  }
+
+  /* ============ Размеры ============ */
+  function resize() {
+    const r = canvas.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width  = Math.round(r.width  * dpr);
+    canvas.height = Math.round(r.height * dpr);
+    W = r.width; H = r.height;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    tray.w = clamp(W * 0.28, 96, 150);
+    tray.h = 28;
+    tray.y = H - 72;
+
+    if (!tray.x) { tray.x = W / 2; tray.targetX = W / 2; }
+    tray.targetX = clamp(tray.targetX, tray.w / 2, W - tray.w / 2);
+    tray.x       = clamp(tray.x,       tray.w / 2, W - tray.w / 2);
+  }
+  window.addEventListener('resize', resize);
+
+  /* ============ Управление ============ */
+  const keys = Object.create(null);
+
+  canvas.addEventListener('pointermove', e => {
+    const r = canvas.getBoundingClientRect();
+    tray.targetX = e.clientX - r.left;
+  });
+  canvas.addEventListener('pointerdown', e => {
+    const r = canvas.getBoundingClientRect();
+    tray.targetX = e.clientX - r.left;
+  });
+
+  window.addEventListener('keydown', e => {
+    if (['ArrowLeft', 'ArrowRight', 'a', 'd', 'A', 'D', ' '].includes(e.key)) e.preventDefault();
+    keys[e.key] = true;
+    if (e.key === ' ' && game.state !== 'play') { startGame(); }
+  });
+  window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+  document.getElementById('playBtn').addEventListener('click', startGame);
+  document.getElementById('againBtn').addEventListener('click', startGame);
+
+  /* ============ Логика игры ============ */
+  function startGame() {
+    game.state = 'play';
+    game.score = 0;
+    game.lives = 3;
+    game.combo = 0;
+    game.dots  = 0;
+    game.items = [];
+    game.particles = [];
+    game.texts = [];
+    game.time = 0;
+    game.spawnTimer = 0.9;
+    game.sinceDot = 0;
+    game.shake = 0;
+    game.flash = 0;
+
+    tray.x = tray.targetX = W / 2;
+
+    startScreen.classList.add('hidden');
+    overScreen.classList.add('hidden');
+    updateHUD();
+    beep(520, 0.08, 'triangle', 0.07);
+  }
+
+  function gameOver() {
+    game.state = 'over';
+    if (game.score > game.best) {
+      game.best = game.score;
+      try { localStorage.setItem('vkusno_best', game.best); } catch (e) {}
+    }
+    finalScoreEl.textContent = game.score;
+    bestScoreEl.textContent  = game.best;
+    overScreen.classList.remove('hidden');
+    beep(220, 0.18, 'sawtooth', 0.06);
+    setTimeout(() => beep(140, 0.32, 'sawtooth', 0.06), 140);
+  }
+
+  function updateHUD() {
+    scoreEl.textContent = game.score;
+    livesEl.textContent = game.lives > 0 ? '❤️'.repeat(game.lives) : '💀';
+    dotsEl.textContent  = '⚫ ' + game.dots;
+  }
+
+  /* ---------- Спавн ---------- */
+  function spawnItem() {
+    const t = game.time;
+    let type = 'food';
+
+    if (game.sinceDot >= 6 + Math.min(4, Math.floor(t / 25))) {
+      type = 'dot';
+      game.sinceDot = 0;
+    } else if (t > 5 && Math.random() < 0.16) {
+      type = 'bad';
+    }
+
+    const baseSpeed = 120 + Math.min(235, t * 7.5);
+    const it = {
+      type,
+      x: rand(40, Math.max(41, W - 40)),
+      y: -50,
+      vy: baseSpeed * rand(0.85, 1.15) * (type === 'dot' ? 0.72 : 1),
+      vx: rand(-25, 25),
+      rot: 0,
+      vrot: type === 'dot' ? 0 : rand(-3, 3),
+      size: type === 'dot' ? 42 : 40,
+      emoji: '🥦',
+      points: 0
+    };
+
+    if (type === 'food') {
+      const f = pick(FOODS);
+      it.emoji = f.e;
+      it.points = f.p;
+      game.sinceDot++;
+    }
+
+    game.items.push(it);
+  }
+
+  /* ---------- Эффекты ---------- */
+  function burst(x, y, color, n) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = rand(60, 260);
+      const life = rand(0.35, 0.8);
+      game.particles.push({
+        x, y,
+        vx: Math.cos(a) * s,
+        vy: Math.sin(a) * s - 70,
+        life, max: life,
+        size: rand(2, 5),
+        color
+      });
+    }
+  }
+
+  function addText(x, y, text, color, size) {
+    game.texts.push({ x, y, text, color, size: size || 20, life: 0.95, max: 0.95 });
+  }
+
+  /* ---------- Ловля ---------- */
+  function onCatch(it) {
+    const g = game;
+
+    if (it.type === 'bad') {
+      g.lives--;
+      g.combo = 0;
+      g.shake = 14;
+      g.flash = 0.55; g.flashColor = '255,60,60';
+      burst(it.x, it.y, '#8ef07a', 14);
+      addText(it.x, it.y, 'Фу!', '#8ef07a', 24);
+      beep(110, 0.22, 'square', 0.07);
+      updateHUD();
+      if (g.lives <= 0) gameOver();
+      return;
+    }
+
+    if (it.type === 'dot') {
+      g.dots++;
+      const bonus = 50 + g.combo * 5;
+      g.score += bonus;
+      g.flash = 0.5; g.flashColor = '255,205,90';
+      burst(it.x, it.y, '#ffd166', 28);
+      addText(it.x, it.y - 8, 'И ТОЧКА!', '#ffd166', 26);
+      addText(it.x, it.y + 26, '+' + bonus, '#ffffff', 18);
+      beep(660, 0.09, 'triangle', 0.07);
+      setTimeout(() => beep(880, 0.13, 'triangle', 0.07), 80);
+      setTimeout(() => beep(1170, 0.16, 'triangle', 0.06), 170);
+
+      if (g.dots % 3 === 0 && g.lives < 5) {
+        g.lives++;
+        addText(W / 2, H * 0.42, '❤️ +1', '#ff7b8a', 24);
+      }
+      updateHUD();
+      return;
+    }
+
+    /* обычная вкусность */
+    g.combo++;
+    const mult = 1 + Math.min(4, Math.floor(g.combo / 5)) * 0.5;
+    const pts = Math.round(it.points * mult);
+    g.score += pts;
+    burst(it.x, it.y, '#ffb36b', 10);
+    addText(it.x, it.y, '+' + pts, '#ffffff', 20);
+    if (g.combo % 5 === 0) {
+      addText(W / 2, H * 0.36, 'ВКУСНО ×' + mult.toFixed(1), '#ffb36b', 24);
+      beep(880, 0.1, 'triangle', 0.06);
+    } else {
+      beep(rand(440, 620), 0.06, 'sine', 0.05);
+    }
+    updateHUD();
+  }
+
+  function onMiss(it) {
+    if (it.type !== 'food') return;      // брокколи и точка просто падают
+    game.lives--;
+    game.combo = 0;
+    game.shake = 8;
+    addText(it.x, H - 100, 'Ой…', '#ff9aa2', 22);
+    beep(160, 0.16, 'sine', 0.05);
+    updateHUD();
+    if (game.lives <= 0) gameOver();
+  }
+
+  /* ---------- Обновление ---------- */
+  function update(dt) {
+    const g = game;
+    g.time += dt;
+
+    /* движение тарелки */
+    let dir = 0;
+    if (keys.ArrowLeft || keys.a || keys.A)  dir -= 1;
+    if (keys.ArrowRight || keys.d || keys.D) dir += 1;
+    if (dir) tray.targetX += dir * 780 * dt;
+
+    tray.targetX = clamp(tray.targetX, tray.w / 2, W - tray.w / 2);
+    tray.x += (tray.targetX - tray.x) * Math.min(1, dt * 16);
+
+    /* спавн */
+    g.spawnTimer -= dt;
+    if (g.spawnTimer <= 0) {
+      spawnItem();
+      const base = Math.max(0.42, 1.15 - g.time * 0.013);
+      g.spawnTimer = base * rand(0.8, 1.25);
+    }
+
+    /* предметы */
+    for (let i = g.items.length - 1; i >= 0; i--) {
+      const it = g.items[i];
+      it.y += it.vy * dt;
+      it.x += it.vx * dt;
+      it.rot += it.vrot * dt;
+
+      if (it.x < 30 && it.vx < 0) { it.vx *= -1; it.x = 30; }
+      if (it.x > W - 30 && it.vx > 0) { it.vx *= -1; it.x = W - 30; }
+
+      if (hitTray(it)) {
+        g.items.splice(i, 1);
+        onCatch(it);
+        continue;
+      }
+      if (it.y - it.size > H + 20) {
+        g.items.splice(i, 1);
+        onMiss(it);
+      }
+    }
+
+    /* частицы */
+    for (let i = g.particles.length - 1; i >= 0; i--) {
+      const p = g.particles[i];
+      p.vy += 780 * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.life -= dt;
+      if (p.life <= 0) g.particles.splice(i, 1);
+    }
+
+    /* всплывающий текст */
+    for (let i = g.texts.length - 1; i >= 0; i--) {
+      const t = g.texts[i];
+      t.y -= 62 * dt;
+      t.life -= dt;
+      if (t.life <= 0) g.texts.splice(i, 1);
+    }
+
+    /* затухания */
+    if (g.shake > 0) g.shake = Math.max(0, g.shake - dt * 60);
+    if (g.flash > 0) g.flash = Math.max(0, g.flash - dt * 1.8);
+  }
+
+  function hitTray(it) {
+    const r  = it.size * 0.36;
+    const L  = tray.x - tray.w / 2, R = tray.x + tray.w / 2;
+    const T  = tray.y - tray.h / 2, B = tray.y + tray.h / 2;
+    const cx = clamp(it.x, L, R);
+    const cy = clamp(it.y, T, B);
+    return (it.x - cx) ** 2 + (it.y - cy) ** 2 < r * r;
+  }
+
+  /* ============ Отрисовка ============ */
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y,     x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x,     y + h, r);
+    ctx.arcTo(x,     y + h, x,     y,     r);
+    ctx.arcTo(x,     y,     x + w, y,     r);
+    ctx.closePath();
+  }
+
+  function drawItems() {
+    for (const it of game.items) {
+      ctx.save();
+      ctx.translate(it.x, it.y);
+
+      if (it.type === 'dot') {
+        ctx.shadowColor = 'rgba(255,210,110,.95)';
+        ctx.shadowBlur = 26;
+        ctx.fillStyle = '#fff6dc';
+        ctx.beginPath(); ctx.arc(0, 0, it.size * 0.44, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#150a13';
+        ctx.beginPath(); ctx.arc(0, 0, it.size * 0.29, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.rotate(it.rot);
+        if (it.type === 'bad') {
+          ctx.shadowColor = 'rgba(120,240,110,.55)';
+          ctx.shadowBlur = 16;
+        }
+        ctx.font = it.size + 'px ' + EMOJI_FONT;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(it.emoji, 0, 0);
+      }
+      ctx.restore();
+    }
+  }
+
+  function drawTray() {
+    const x = tray.x - tray.w / 2;
+    const y = tray.y - tray.h / 2;
+
+    ctx.save();
+    ctx.shadowColor = 'rgba(255,120,45,.85)';
+    ctx.shadowBlur = 26;
+    const grad = ctx.createLinearGradient(0, y, 0, y + tray.h);
+    grad.addColorStop(0, '#ff8a3d');
+    grad.addColorStop(1, '#c21c14');
+    ctx.fillStyle = grad;
+    roundRect(x, y, tray.w, tray.h, 14);
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255,255,255,.45)';
+    ctx.lineWidth = 2;
+    roundRect(x + 3.5, y + 3.5, tray.w - 7, tray.h - 7, 10);
+    ctx.stroke();
+
+    /* та самая точка */
+    ctx.fillStyle = '#1a0a10';
+    ctx.beginPath(); ctx.arc(tray.x, tray.y, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    for (const p of game.particles) {
+      ctx.globalAlpha = Math.max(0, p.life / p.max);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawTexts() {
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const t of game.texts) {
+      const a = Math.min(1, t.life / t.max * 1.6);
+      ctx.globalAlpha = a;
+      ctx.font = '900 ' + t.size + 'px system-ui, sans-serif';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(0,0,0,.45)';
+      ctx.strokeText(t.text, t.x, t.y);
+      ctx.fillStyle = t.color;
+      ctx.fillText(t.text, t.x, t.y);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, W, H);
+
+    ctx.save();
+    if (game.shake > 0) {
+      ctx.translate(rand(-game.shake, game.shake), rand(-game.shake, game.shake));
+    }
+
+    /* «пол» */
+    const floor = ctx.createLinearGradient(0, H - 90, 0, H);
+    floor.addColorStop(0, 'rgba(0,0,0,0)');
+    floor.addColorStop(1, 'rgba(0,0,0,.45)');
+    ctx.fillStyle = floor;
+    ctx.fillRect(0, H - 90, W, 90);
+
+    drawItems();
+    drawTray();
+    drawParticles();
+    drawTexts();
+    ctx.restore();
+
+    if (game.flash > 0) {
+      ctx.fillStyle = 'rgba(' + game.flashColor + ',' + (game.flash * 0.5) + ')';
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  /* ============ Цикл ============ */
+  let last = 0;
+  function loop(ts) {
+    requestAnimationFrame(loop);
+    const dt = Math.min(0.05, (ts - last) / 1000 || 0);
+    last = ts;
+
+    if (game.state === 'play') update(dt);
+    render();
+  }
+
+  /* ============ Старт ============ */
+  resize();
+  updateHUD();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
